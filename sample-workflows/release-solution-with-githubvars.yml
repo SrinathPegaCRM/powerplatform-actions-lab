@@ -11,23 +11,15 @@ on:
       solution_name:
         description: 'The solution name.'
         type: string
-        default: ALMLab       
-      solution_shipping_folder:
-        description: 'folder name for staging the exported solution *do not change*'        
+        default: GitHubActionsLab
+      root_folder:
+        description: 'name of the folder where the solution is going unpacked'
         type: string
-        default: out/ship/
-      solution_outbound_folder:
-        description: 'staging the unpacked solution folder before check-in *do not change*'
+        default: ${{ github.event.repository.name }}
+      zip_folder:
+        description: 'name of the folder where the zip files reside'
         type: string
-        default: out/solutions/
-      solution_source_folder: 
-       description: 'folder name to be created and checked in *do not change*'
-       type: string
-       default: solutions/
-      solution_release_folder:
-       description: 'folder where the released binaries are going to be hosted *do not change*'
-       type: string
-       default: out/release
+        default: ${{ github.event.repository.name }}
       BUILD_ENVIRONMENT_URL:
         description: 'Build environment url.'
         type: string
@@ -48,24 +40,26 @@ on:
       envSecret:
         description: 'The secret value for authentication using SPN'
         required: true
+permissions:
+  contents: write
 
 jobs:
   convert-to-managed:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     # or you can say runs-on: ubuntu-latest
     env:
       RUNNER_DEBUG: 1
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         lfs: true
 
     - name: Pack solution
       uses: microsoft/powerplatform-actions/pack-solution@v0
       with:
-        solution-folder: ${{ inputs.solution_source_folder}}/${{ inputs.solution_name }}
-        solution-file: ${{ inputs.solution_outbound_folder}}/${{ inputs.solution_name }}.zip
+        solution-folder: ${{ inputs.root_folder}}/${{ inputs.solution_name }}
+        solution-file: ${{ inputs.zip_folder}}/${{ inputs.solution_name }}.zip
         solution-type: Unmanaged
 
     - name: Import solution as unmanaged to build env
@@ -75,7 +69,7 @@ jobs:
         app-id: ${{inputs.CLIENT_ID}}
         client-secret: ${{ secrets.envSecret }}
         tenant-id: ${{inputs.TENANT_ID}}
-        solution-file: ${{ inputs.solution_outbound_folder}}/${{ inputs.solution_name }}.zip
+        solution-file: ${{ inputs.zip_folder}}/${{ inputs.solution_name }}.zip
         force-overwrite: true
         publish-changes: true
 
@@ -88,13 +82,13 @@ jobs:
         tenant-id: ${{inputs.TENANT_ID}}
         solution-name: ${{ inputs.solution_name }}
         managed: true
-        solution-output-file: ${{ inputs.solution_shipping_folder}}/${{ inputs.solution_name }}_managed.zip
+        solution-output-file: ${{ inputs.zip_folder}}/${{ inputs.solution_name }}_managed.zip
 
     - name: Upload the ready to ship solution to GH artifact store
       uses: actions/upload-artifact@v2
       with:
         name: managedSolutions
-        path: ${{ inputs.solution_shipping_folder}}/
+        path: ${{ inputs.zip_folder}}/
 
   release-to-staging:
     needs: [ convert-to-managed ]
@@ -103,7 +97,7 @@ jobs:
       RUNNER_DEBUG: 1
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         lfs: true
 
@@ -111,7 +105,7 @@ jobs:
       uses: actions/download-artifact@v2
       with:
         name: managedSolutions
-        path: ${{ inputs.solution_release_folder}}
+        path: ${{ inputs.zip_folder}}
     - name: Import solution to prod env
       uses: microsoft/powerplatform-actions/import-solution@v0
       with:
@@ -119,6 +113,6 @@ jobs:
         app-id: ${{inputs.CLIENT_ID}}
         client-secret: ${{ secrets.envSecret }}
         tenant-id: ${{inputs.TENANT_ID}}
-        solution-file: ${{ inputs.solution_release_folder}}/${{ inputs.solution_name }}_managed.zip
+        solution-file: ${{ inputs.zip_folder}}/${{ inputs.solution_name }}_managed.zip
         force-overwrite: true
         publish-changes: true
